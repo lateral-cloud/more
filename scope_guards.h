@@ -7,14 +7,14 @@
 
 #include "config.h"
 
-#include <chrono>
-#include "print.h"
+#include "times.h"
+#include "prints.h"
 
 namespace more::scope_guards
 {
 	namespace scope_guards_details
 	{
-		template<class InStream = std::wistream, class OutStream = std::wostream>
+		template<class Clock, class InStream, class OutStream>
 		struct scope_guard
 		{
 		private:
@@ -24,15 +24,11 @@ namespace more::scope_guards
 
 			static auto make_time_str()
 			{
-				tm t;
-				const auto now_pt = std::chrono::system_clock::now();
-				const auto now = std::chrono::duration_cast<std::chrono::milliseconds>(now_pt.time_since_epoch());
-				const auto time = std::chrono::system_clock::to_time_t(now_pt);
-				const auto mili = now.count() - time * 1000;
-				localtime_s(&t, &time);
-				return std::format(L"{:04}-{:02}-{:02} {:02}:{:02}:{:02}.{:03}",
+				times::times_t<Clock> t;
+				t.get_times();
+				return std::format(L"{:04}/{:02}/{:02} {:02}:{:02}:{:02}.{:03}{:03}",
 					t.tm_year + 1900, t.tm_mon + 1, t.tm_mday,
-					t.tm_hour, t.tm_min, t.tm_sec, mili);
+					t.tm_hour, t.tm_min, t.tm_sec, t.tm_milisec, t.tm_microsec);
 			}
 
 		public:
@@ -93,7 +89,7 @@ namespace more::scope_guards
 		};
 
 		template<class InStream, class OutStream, class NameType>
-		scope_guard(InStream&, OutStream&, const NameType&) -> scope_guard<InStream, OutStream>;
+		scope_guard(InStream&, OutStream&, NameType) -> scope_guard<std::chrono::system_clock, InStream, OutStream>;
 	}
 
 	using scope_guards_details::scope_guard;
