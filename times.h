@@ -9,13 +9,10 @@
 
 #include <chrono>
 
-namespace more::times
-{
-	namespace times_details
-	{
+namespace more::times {
+	namespace times_details {
 		template<class Clock = std::chrono::system_clock>
-		struct times_t
-		{
+		struct times_t {
 			int tm_nanosec;  // nanoseconds after the microsecond - [0, 999]
 			int tm_microsec; // microseconds after the milisecond - [0, 999]
 			int tm_milisec;  // miliseconds after the second - [0, 999]
@@ -29,8 +26,7 @@ namespace more::times
 			int tm_yday;     // days since January 1 - [0, 365]
 			int tm_isdst;    // daylight savings time flag
 
-			void get_times() noexcept
-			{
+			void get_times() noexcept {
 				tm t;
 				const auto duration = Clock::now().time_since_epoch();
 				const auto time = std::chrono::duration_cast<std::chrono::seconds>(duration).count();
