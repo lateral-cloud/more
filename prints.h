@@ -5,6 +5,8 @@
 #ifndef __MORE_PRINTS__
 #define __MORE_PRINTS__
 
+#include "config.h"
+
 #include <concepts>
 #include <iostream>
 #include <sstream>
@@ -13,7 +15,11 @@
 #include <string_view>
 #include <optional>
 #include <variant>
+
+#if __has_include(<boost/pfr.hpp>)
+#define __MORE_PRINTS_BOOST_PFR__
 #include <boost/pfr.hpp>
+#endif
 
 namespace more::prints
 {
@@ -76,6 +82,10 @@ namespace more::prints
 		template<class T>								  struct is_char_array
 		{
 			static constexpr bool value = false;
+		};
+		template<char_type T>							  struct is_char_array<T[]>
+		{
+			static constexpr bool value = true;
 		};
 		template<char_type T, size_t N>					  struct is_char_array<T[N]>
 		{
@@ -146,6 +156,7 @@ namespace more::prints
 			{
 				_tuple_print(os, tuple, std::make_index_sequence<std::tuple_size_v<T0>>());
 			}
+#ifdef __MORE_PRINTS_BOOST_PFR__
 			static void aggregate_print(OutStream& os, const T0& aggregate)
 			{
 				print_once(os, "{");
@@ -157,6 +168,7 @@ namespace more::prints
 					});
 				print_once(os, "}");
 			}
+#endif
 			static void default_print(OutStream& os, const T0& arg)
 			{
 				os << arg;
@@ -177,7 +189,9 @@ namespace more::prints
 				else if constexpr (is_key_value_v<T0>) keyvalue_print(os, arg);
 				else if constexpr (is_rolled_v<T0>) rolled_print(os, arg);
 				else if constexpr (is_kind_of_v<T0, std::tuple>) tuple_print(os, arg);
+#ifdef __MORE_PRINTS_BOOST_PFR__
 				else if constexpr (is_aggregate_v<T0>) aggregate_print(os, arg);
+#endif
 				else default_print(os, arg);
 			}
 		};
@@ -187,6 +201,11 @@ namespace more::prints
 		{
 			print_once(os, arg);
 			((print_once(os, setting.sep), print_once(os, args)), ...);
+			print_once(os, setting.end);
+		}
+		template<class SepType, class EndType, class OutStream, class Arg, class... Args>
+		void fprint(const printer_setting<SepType, EndType>& setting, OutStream& os)
+		{
 			print_once(os, setting.end);
 		}
 		template<class OutStream, class... Args>
