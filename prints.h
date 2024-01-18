@@ -24,6 +24,15 @@ namespace more::prints {
 	namespace prints_details {
 		using namespace more::type_traits;
 
+		template<class T>
+		constexpr bool is_key_value_v = requires() { T::key_type; T::value_type; };
+
+		template<class T>
+		constexpr bool is_rolled_v = requires(T && v) { std::begin(std::forward<T>(v)); std::end(std::forward<T>(v)); };
+
+		template<class OutStream, class T>
+		constexpr bool is_default_printable_v = requires(OutStream && os, T && v) { std::forward<OutStream>(os) << std::forward<T>(v); };
+
 		template<class SepType, class EndType>
 		struct printer_setting {
 			SepType sep;
@@ -51,15 +60,6 @@ namespace more::prints {
 
 		constexpr printer_setting printer_setting_default;
 		constexpr printer_setting printer_setting_noline(" ", " ");
-
-		template<class T>
-		constexpr bool is_key_value_v = requires() { T::key_type; T::value_type; };
-
-		template<class T>
-		constexpr bool is_rolled_v = requires(T&& v) { std::begin(std::forward<T>(v)); std::end(std::forward<T>(v)); };
-
-		template<class OutStream, class T>
-		constexpr bool is_default_printable_v = requires(OutStream&& os, T&& v) { std::forward<OutStream>(os) << std::forward<T>(v); };
 
 		template<class OutStream, class T>
 		struct printer_adapter;
@@ -207,6 +207,7 @@ namespace more::prints {
 		};
 	}
 
+	using prints_details::is_default_printable_v;
 	using prints_details::printer_setting;
 	using prints_details::kind_of_printer_setting;
 	using prints_details::printer_adapter;
