@@ -1,6 +1,6 @@
 #ifdef _MSC_VER
 #pragma once
-#endif
+#endif // !_MSC_VER
 
 #ifndef __MORE_CONFIG__
 #define __MORE_CONFIG__
@@ -13,4 +13,4 @@
 
 #define _MORE_VERSION 20240116
 
-#endif
+#endif // !__MORE_CONFIG__

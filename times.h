@@ -1,6 +1,6 @@
 #ifdef _MSC_VER
 #pragma once
-#endif
+#endif // !_MSC_VER
 
 #ifndef __MORE_TIMES__
 #define __MORE_TIMES__
@@ -53,4 +53,4 @@ namespace more::times {
 	using times_details::times_t;
 }
 
-#endif
+#endif // !__MORE_TIMES__

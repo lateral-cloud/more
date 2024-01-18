@@ -1,20 +1,19 @@
 #ifdef _MSC_VER
 #pragma once
-#endif
+#endif // !_MSC_VER
 
 #ifndef __MORE_PRINTS__
 #define __MORE_PRINTS__
 
 #include "config.h"
 
-#include <concepts>
 #include <iostream>
-#include <sstream>
 #include <iomanip>
 #include <string>
 #include <string_view>
 #include <optional>
 #include <variant>
+#include "type_traits.h"
 
 #if __has_include(<boost/pfr.hpp>)
 #define __MORE_PRINTS_BOOST_PFR__
@@ -23,20 +22,22 @@
 
 namespace more::prints {
 	namespace prints_details {
+		using namespace more::type_traits;
+
 		template<class SepType, class EndType>
 		struct printer_setting {
-			const SepType& sep;
-			const EndType& end;
+			SepType sep;
+			EndType end;
 		};
 		template<>
 		struct printer_setting<const char[2], const char[2]> {
-			const char(&sep)[2] = " ";
-			const char(&end)[2] = "\n";
+			const char sep[2] = { ' ', '\0' };
+			const char end[2] = { '\n', '\0' };
 		};
 		template<class SepType>
 		struct printer_setting<SepType, const char[2]> {
-			const SepType& sep;
-			const char(&end)[2] = "\n";
+			SepType sep;
+			const char end[2] = { '\n', '\0' };
 		};
 
 		printer_setting()->printer_setting<const char[2], const char[2]>;
@@ -45,195 +46,175 @@ namespace more::prints {
 		template<class SepType, class EndType>
 		printer_setting(SepType, EndType) -> printer_setting<SepType, EndType>;
 
-		constexpr printer_setting default_printer_setting;
-
-		template<class T0, template<class...> class T>
-		struct is_kind_of;
-
 		template<class T>
-		struct is_char_array;
+		concept kind_of_printer_setting = kind_of<T, printer_setting>;
 
-		template<class OutStream, class T>
-		struct printer;
-
-		template<class T0, class T1>
-		constexpr bool is_same_v = std::same_as<T0, T1>;
-
-		template<class T0, class... Ts>
-		constexpr bool is_one_of_v = (is_same_v<T0, Ts> || ...);
-
-		template<class T0, template<class...> class T>
-		constexpr bool is_kind_of_v = is_kind_of<T0, T>::value;
+		constexpr printer_setting printer_setting_default;
+		constexpr printer_setting printer_setting_noline(" ", " ");
 
 		template<class T>
 		constexpr bool is_key_value_v = requires() { T::key_type; T::value_type; };
 
 		template<class T>
-		constexpr bool is_rolled_v = requires(const T& v) { std::begin(v); std::end(v); };
-
-		template<class T>
-		constexpr bool is_aggregate_v = std::is_aggregate_v<T>;
-
-		template<class T>
-		constexpr bool is_char_array_v = is_char_array<T>::value;
-
-		template<class T> constexpr bool is_char_v = is_one_of_v<T,
-			char, wchar_t, signed char, unsigned char, char8_t, char16_t, char32_t>;
-
-		template<class T> constexpr bool is_char_pointer_v = is_one_of_v<T,
-			char*, const char*, wchar_t*, const wchar_t*,
-			signed char*, const signed char*, unsigned char*, const unsigned char*,
-			char8_t*, const char8_t*, char16_t*, const char16_t*, char32_t*, const char32_t*>;
-
-		template<class T> constexpr bool is_string_v = is_one_of_v<T,
-			std::string, std::wstring, std::u8string, std::u16string, std::u32string,
-			std::string_view, std::wstring_view, std::u8string_view, std::u16string_view, std::u32string_view>;
-		template<class T> constexpr bool is_cstring_v = is_char_pointer_v<T> || is_char_array_v<T>;
-
-		template<class T> concept char_type = is_char_v<T>;
-
-		template<class T0, template<class...> class T>
-		struct is_kind_of {
-			static constexpr bool value = false;
-		};
-		template<template<class...> class T, class... Ts>
-		struct is_kind_of<T<Ts...>, T> {
-			static constexpr bool value = true;
-		};
-
-		template<class T>
-		struct is_char_array {
-			static constexpr bool value = false;
-		};
-		template<char_type T>
-		struct is_char_array<T[]> {
-			static constexpr bool value = true;
-		};
-		template<char_type T, size_t N>
-		struct is_char_array<T[N]> {
-			static constexpr bool value = true;
-		};
+		constexpr bool is_rolled_v = requires(T&& v) { std::begin(std::forward<T>(v)); std::end(std::forward<T>(v)); };
 
 		template<class OutStream, class T>
-		void print_once(OutStream& os, const T& arg) {
-			printer<OutStream, T>::print(os, arg);
+		constexpr bool is_default_printable_v = requires(OutStream&& os, T&& v) { std::forward<OutStream>(os) << std::forward<T>(v); };
+
+		template<class OutStream, class T>
+		struct printer_adapter;
+
+		template<class OutStream, class T>
+		constexpr void print_once(OutStream&& os, T&& arg) {
+			printer_adapter<OutStream, T>::print(std::forward<OutStream>(os), std::forward<T>(arg));
 		}
 
 		template<class OutStream, class T>
-		struct printer {
+		struct printer_adapter {
 		private:
 			using T0 = std::remove_cvref_t<T>;
 
 			template<size_t... Idx>
-			static void _tuple_print(OutStream& os, const T0& tuple, std::index_sequence<Idx...>) {
-				print_once(os, "{");
+			constexpr static void _tuple_print(OutStream&& os, T&& tuple, std::index_sequence<Idx...>) {
+				print_once(std::forward<OutStream>(os), "{");
 				bool once = false;
-				((once ? (print_once(os, ", "), 0) : (once = true, 0),
-					printer<OutStream, decltype(std::tuple_element_t<Idx, T0>)>::print(os, std::get<Idx>(tuple))), ...);
-				print_once(os, "}");
+				((once ? (print_once(std::forward<OutStream>(os), ", "), 0) : (once = true, 0), print_once(std::forward<OutStream>(os), std::get<Idx>(std::forward<T>(tuple)))), ...);
+				print_once(std::forward<OutStream>(os), "}");
 			}
 
-			static void varient_print(OutStream& os, const T0& varient) {
-				std::visit([&](const auto& v) { printer<OutStream, decltype(v)>::print(os, v); }, varient);
+			constexpr static void varient_print(OutStream&& os, T&& varient) {
+				std::visit([&]<class Arg>(Arg&& arg) { print_once(std::forward<OutStream>(os), std::forward<Arg>(arg)); }, std::forward<T>(varient));
 			}
-			static void optional_print(OutStream& os, const T0& optional) {
-				if (optional.has_value()) printer<OutStream, decltype(*optional)>::print(os, *optional);
-				else printer<OutStream, std::nullopt_t>::print(os, std::nullopt);
+			constexpr static void optional_print(OutStream&& os, T&& optional) {
+				if (optional.has_value()) print_once(std::forward<OutStream>(os), *std::forward<T>(optional));
+				else print_once(std::forward<OutStream>(os), std::nullopt);
 			}
-			static void char_print(OutStream& os, const T0& ch) {
-				printer<OutStream, T0[]>::print(os, { (T0)'\'', ch, (T0)'\'' , (T0)'\0' });
+			constexpr static void char_print(OutStream&& os, T&& ch) {
+				print_once(std::forward<OutStream>(os), { (T)'\'', std::forward<T>(ch), (T)'\'' , (T)'\0' });
 			}
-			static void str_print(OutStream& os, const T0& str) {
-				printer<OutStream, decltype(std::quoted(str))>::print(os, std::quoted(str));
+			constexpr static void str_print(OutStream&& os, T&& str) {
+				print_once(std::forward<OutStream>(os), std::quoted(std::forward<T>(str)));
 			}
-			static void cstr_print(OutStream& os, const T0& cstr) {
-				default_print(os, cstr);
+			constexpr static void cstr_print(OutStream&& os, T&& cstr) {
+				default_print(std::forward<OutStream>(os), std::forward<T>(cstr));
 			}
-			static void keyvalue_print(OutStream& os, const T0& keyvalue) {
-				auto& [k, v] = keyvalue;
-				printer<OutStream, decltype(k)>::print(os, k);
-				print_once(os, ": ");
-				printer<OutStream, decltype(v)>::print(os, v);
+			constexpr static void keyvalue_print(OutStream&& os, T&& keyvalue) {
+				auto&& [k, v] = std::forward<T>(keyvalue);
+				print_once(std::forward<OutStream>(os), k);
+				print_once(std::forward<OutStream>(os), ": ");
+				print_once(std::forward<OutStream>(os), v);
 			}
-			static void rolled_print(OutStream& os, const T0& cntr) {
-				print_once(os, "{");
+			constexpr static void rolled_print(OutStream&& os, T&& cntr) {
+				print_once(std::forward<OutStream>(os), "{");
 				bool once = false;
-				for (auto& i : cntr)
+				for (auto&& i : std::forward<T>(cntr))
 				{
-					if (once) print_once(os, ", ");
+					if (once) print_once(std::forward<OutStream>(os), ", ");
 					else once = true;
-					printer<OutStream, decltype(i)>::print(os, i);
+					print_once(std::forward<OutStream>(os), i);
 				};
-				print_once(os, "}");
+				print_once(std::forward<OutStream>(os), "}");
 			}
-			static void tuple_print(OutStream& os, const T0& tuple) {
-				_tuple_print(os, tuple, std::make_index_sequence<std::tuple_size_v<T0>>());
+			constexpr static void tuple_print(OutStream&& os, T&& tuple) {
+				_tuple_print(std::forward<OutStream>(os), std::forward<T>(tuple), std::make_index_sequence<std::tuple_size_v<T0>>());
+			}
+			constexpr static void default_print(OutStream&& os, T&& arg) {
+				std::forward<OutStream>(os) << std::forward<T>(arg);
 			}
 #ifdef __MORE_PRINTS_BOOST_PFR__
-			static void aggregate_print(OutStream& os, const T0& aggregate) {
-				print_once(os, "{");
+			constexpr static void aggregate_print(OutStream&& os, T&& aggregate) {
+				print_once(std::forward<OutStream>(os), "{");
 				bool once = false;
-				boost::pfr::for_each_field(aggregate, [&](auto& i) {
-					if (once) print_once(os, ", ");
+				boost::pfr::for_each_field(std::forward<T>(aggregate), [&](auto&& i) {
+					if (once) print_once(std::forward<OutStream>(os), ", ");
 					else once = true;
-					printer<OutStream, decltype(i)>::print(os, i);
+					print_once(std::forward<OutStream>(os), i);
 					});
-				print_once(os, "}");
+				print_once(std::forward<OutStream>(os), "}");
 			}
 #endif
-			static void default_print(OutStream& os, const T0& arg) {
-				os << arg;
-			}
 
 		public:
-			static void print(OutStream& os, const T0& arg) {
-				if constexpr (is_same_v<T0, std::nullptr_t>) print_once(os, "nullptr");
-				else if constexpr (is_same_v<T0, std::nullopt_t>) print_once(os, "nullopt");
-				else if constexpr (is_same_v<T0, std::monostate>) print_once(os, "monostate");
-				else if constexpr (is_kind_of_v<T0, std::variant>) varient_print(os, arg);
-				else if constexpr (is_kind_of_v<T0, std::optional>) optional_print(os, arg);
-				else if constexpr (is_same_v<T0, bool>) print_once(os, arg ? "true" : "false");
-				else if constexpr (is_char_v<T0>) char_print(os, arg);
-				else if constexpr (is_string_v<T0>) str_print(os, arg);
-				else if constexpr (is_cstring_v<T0>) cstr_print(os, arg);
-				else if constexpr (is_key_value_v<T0>) keyvalue_print(os, arg);
-				else if constexpr (is_rolled_v<T0>) rolled_print(os, arg);
-				else if constexpr (is_kind_of_v<T0, std::tuple>) tuple_print(os, arg);
+			constexpr static void print(OutStream&& os, T&& arg) {
+				if constexpr (is_nullopt_v<T0>) print_once(std::forward<OutStream>(os), "nullopt");
+				else if constexpr (is_nullptr_v<T0>) print_once(std::forward<OutStream>(os), "nullptr");
+				else if constexpr (is_monostate_v<T0>) print_once(std::forward<OutStream>(os), "monostate");
+				else if constexpr (is_variant_v<T0>) varient_print(std::forward<OutStream>(os), std::forward<T>(arg));
+				else if constexpr (is_optional_v<T0>) optional_print(std::forward<OutStream>(os), std::forward<T>(arg));
+				else if constexpr (is_bool_v<T0>) print_once(std::forward<OutStream>(os), std::forward<T>(arg) ? "true" : "false");
+				else if constexpr (is_char_v<T0>) char_print(std::forward<OutStream>(os), std::forward<T>(arg));
+				else if constexpr (is_string_v<T0> || is_string_view_v<T0>) str_print(std::forward<OutStream>(os), std::forward<T>(arg));
+				else if constexpr (is_chars_v<T0>) cstr_print(std::forward<OutStream>(os), std::forward<T>(arg));
+				else if constexpr (is_key_value_v<T0>) keyvalue_print(std::forward<OutStream>(os), std::forward<T>(arg));
+				else if constexpr (is_rolled_v<T>) rolled_print(std::forward<OutStream>(os), std::forward<T>(arg));
+				else if constexpr (is_tuple_v<T0>) tuple_print(std::forward<OutStream>(os), std::forward<T>(arg));
+				else if constexpr (is_default_printable_v<OutStream, T>) default_print(std::forward<OutStream>(os), std::forward<T>(arg));
 #ifdef __MORE_PRINTS_BOOST_PFR__
-				else if constexpr (is_aggregate_v<T0>) aggregate_print(os, arg);
+				else if constexpr (is_aggregate_v<T0>) aggregate_print(std::forward<OutStream>(os), std::forward<T>(arg));
 #endif
-				else default_print(os, arg);
 			}
 		};
 
-		template<class SepType, class EndType, class OutStream, class Arg, class... Args>
-		void fprint(const printer_setting<SepType, EndType>& setting, OutStream& os, const Arg& arg, const Args&... args) {
-			print_once(os, arg);
-			((print_once(os, setting.sep), print_once(os, args)), ...);
-			print_once(os, setting.end);
+		template<kind_of_printer_setting Setting, class OutStream, class Arg, class... Args>
+		constexpr void fprint(const Setting& setting, OutStream&& os, Arg&& arg, Args&&... args) {
+			print_once(std::forward<OutStream>(os), std::forward<Arg>(arg));
+			((print_once(std::forward<OutStream>(os), setting.sep), print_once(std::forward<OutStream>(os), std::forward<Args>(args))), ...);
+			print_once(std::forward<OutStream>(os), setting.end);
 		}
-		template<class SepType, class EndType, class OutStream, class Arg, class... Args>
-		void fprint(const printer_setting<SepType, EndType>& setting, OutStream& os) {
-			print_once(os, setting.end);
+		template<kind_of_printer_setting Setting, class OutStream>
+		constexpr void fprint(const Setting& setting, OutStream&& os) {
+			print_once(std::forward<OutStream>(os), setting.end);
 		}
 		template<class OutStream, class... Args>
-		void fprint(OutStream& os, const Args&... args) {
-			fprint(default_printer_setting, os, args...);
+		constexpr void fprint(OutStream&& os, Args&&... args) {
+			fprint(printer_setting_default, std::forward<OutStream>(os), std::forward<Args>(args)...);
 		}
-		template<class SepType, class EndType, class... Args>
-		void print(const printer_setting<SepType, EndType>& setting, const Args&... args) {
-			fprint(setting, std::wcout, args...);
+		template<kind_of_printer_setting Setting, class... Args>
+		constexpr void print(const Setting& setting, Args&&... args) {
+			fprint(setting, std::wcout, std::forward<Args>(args)...);
 		}
 		template<class... Args>
-		void print(const Args&... args) {
-			fprint(default_printer_setting, std::wcout, args...);
+		constexpr void print(Args&&... args) {
+			fprint(std::wcout, std::forward<Args>(args)...);
 		}
+
+		template<class OutStream>
+		struct printer {
+		private:
+			OutStream& os;
+
+		public:
+			constexpr printer(OutStream& os) noexcept : os(os) {}
+
+			template<kind_of_printer_setting Setting, class... Args>
+			constexpr void operator()(const Setting& setting, Args&&... args) {
+				fprint(setting, os, std::forward<Args>(args)...);
+			}
+			template<class... Args>
+			constexpr void operator()(Args&&... args) {
+				fprint(printer_setting_default, os, std::forward<Args>(args)...);
+			}
+			template<class Arg>
+			constexpr decltype(auto) operator<<(Arg&& arg) {
+				return os << std::forward<Arg>(arg);
+			}
+			constexpr operator const OutStream& () const noexcept {
+				return os;
+			}
+			constexpr operator OutStream& () noexcept {
+				return os;
+			}
+		};
 	}
 
 	using prints_details::printer_setting;
-	using prints_details::printer;
+	using prints_details::kind_of_printer_setting;
+	using prints_details::printer_adapter;
+	using prints_details::printer_setting_default;
+	using prints_details::printer_setting_noline;
 	using prints_details::fprint;
 	using prints_details::print;
+	using prints_details::printer;
 }
 
 #endif // !__MORE_PRINTS__
