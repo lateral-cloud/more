@@ -178,33 +178,68 @@ namespace more::prints {
 			fprint(std::wcout, std::forward<Args>(args)...);
 		}
 
-		template<class OutStream>
+		struct nullostream {
+			constexpr auto& operator<<(const auto&) const noexcept {
+				return *this;
+			}
+		}nullout;
+
+		template<class... OutStreams>
 		struct printer {
+			nullostream nullos;
+
+			constexpr printer() noexcept = default;
+
+			template<kind_of_printer_setting Setting, class... Args>
+			constexpr void operator()(const Setting& setting, Args&&... args) noexcept {}
+			template<class... Args>
+			constexpr void operator()(Args&&... args) noexcept {}
+			template<class Arg>
+			constexpr auto& operator<<(Arg&& arg) {
+				return nullos;
+			}
+			constexpr operator auto& () const noexcept {
+				return nullos;
+			}
+			constexpr operator auto& () noexcept {
+				return nullos;
+			}
+		};
+
+		template<class OutStream, class... OutStreams>
+		struct printer<OutStream, OutStreams...> : printer<OutStreams...> {
 		private:
+			using type = printer<OutStreams...>;
 			OutStream& os;
 
 		public:
-			constexpr printer(OutStream& os) noexcept : os(os) {}
+			constexpr printer(OutStream& os, OutStreams&... oss) noexcept : os(os), type(oss...) {}
 
 			template<kind_of_printer_setting Setting, class... Args>
 			constexpr void operator()(const Setting& setting, Args&&... args) {
 				fprint(setting, os, std::forward<Args>(args)...);
+				type::operator()(setting, std::forward<Args>(args)...);
 			}
 			template<class... Args>
 			constexpr void operator()(Args&&... args) {
-				fprint(printer_setting_default, os, std::forward<Args>(args)...);
+				operator()(printer_setting_default, std::forward<Args>(args)...);
 			}
 			template<class Arg>
-			constexpr decltype(auto) operator<<(Arg&& arg) {
-				return os << std::forward<Arg>(arg);
-			}
-			constexpr operator const OutStream& () const noexcept {
+			constexpr auto& operator<<(Arg&& arg) {
+				os << std::forward<Arg>(arg);
+				type::operator<<(std::forward<Arg>(arg));
 				return os;
 			}
-			constexpr operator OutStream& () noexcept {
+			constexpr operator auto& () const noexcept {
+				return os;
+			}
+			constexpr operator auto& () noexcept {
 				return os;
 			}
 		};
+
+		template<class... OutStream>
+		printer(OutStream&...) -> printer<OutStream...>;
 	}
 
 	using prints_details::is_default_printable_v;
@@ -215,6 +250,8 @@ namespace more::prints {
 	using prints_details::printer_setting_noline;
 	using prints_details::fprint;
 	using prints_details::print;
+	using prints_details::nullostream;
+	using prints_details::nullout;
 	using prints_details::printer;
 }
 
